@@ -1,5 +1,16 @@
+import warnings
+
+from authlib.deprecate import AuthlibDeprecationWarning
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
+
+warnings.filterwarnings(
+    "ignore",
+    message="authlib.jose module is deprecated, please use joserfc instead.",
+    category=AuthlibDeprecationWarning,
+    module="authlib._joserfc_helpers",
+)
+
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from sqlalchemy.ext.asyncio import AsyncSession
 

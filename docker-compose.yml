@@ -33,6 +33,8 @@ services:
       - ./backend:/app
 
   frontend:
+    profiles:
+      - frontend
     build:
       context: ./frontend
     container_name: prompt_builder_frontend

@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Conversation, Message, User
+from schemas import ConversationState
 
 
 async def get_user_by_google_sub(
@@ -83,6 +84,36 @@ async def create_conversation(
     return conversation
 
 
+def get_conversation_state(conversation: Conversation) -> ConversationState:
+    return ConversationState(
+        goal=conversation.goal,
+        audience=conversation.audience,
+        constraints=conversation.constraints or [],
+        output_format=conversation.output_format,
+        missing_fields=conversation.missing_fields or [],
+        ready_to_finalize=conversation.ready_to_finalize,
+    )
+
+
+async def update_conversation_state(
+    db: AsyncSession,
+    conversation: Conversation,
+    state: ConversationState,
+) -> Conversation:
+    conversation.goal = state.goal
+    conversation.audience = state.audience
+    conversation.constraints = state.constraints
+    conversation.output_format = state.output_format
+    conversation.missing_fields = state.missing_fields
+    conversation.ready_to_finalize = state.ready_to_finalize
+
+    db.add(conversation)
+    await db.flush()
+    await db.refresh(conversation)
+
+    return conversation
+
+
 async def get_conversation(
     db: AsyncSession,
     conversation_id: str,
@@ -126,6 +157,7 @@ async def get_user_by_id(
     )
 
     return result.scalar_one_or_none()
+
 
 async def get_messages(
     db: AsyncSession,

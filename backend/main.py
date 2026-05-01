@@ -1,4 +1,5 @@
 import logging
+from functools import lru_cache
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,20 +7,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from starlette.middleware.sessions import SessionMiddleware
 
-from auth import router as auth_router
-from config import settings
-from schemas import UserResponse
 from agent import PromptBuilderAgent
-from database import get_db
-from memory import add_message, create_conversation, get_conversation, get_messages
-from schemas import AgentResponse, AskQuestionResponse, ChatRequest, FinalPromptResponse
-
-from functools import lru_cache
-from config import settings
-from logging_config import setup_logging
-
 from auth import get_current_user, router as auth_router
+from config import settings
+from database import get_db
+from logging_config import setup_logging
+from memory import (
+    add_message,
+    create_conversation,
+    get_conversation,
+    get_conversation_state,
+    get_messages,
+    update_conversation_state,
+)
 from models import User
+from schemas import (
+    AgentResponse,
+    AskQuestionResponse,
+    ChatRequest,
+    ConversationState,
+    FinalPromptResponse,
+)
 
 
 setup_logging()
@@ -93,6 +101,10 @@ async def chat(
 
         else:
             db_messages = []
+            conversation_state = ConversationState()
+
+        if conversation is not None:
+            conversation_state = get_conversation_state(conversation)
 
         conversation_messages = [
             {
@@ -109,19 +121,29 @@ async def chat(
             }
         )
 
-        llm_response = await agent.run(conversation_messages)
+        llm_response = await agent.run(
+            conversation_messages=conversation_messages,
+            conversation_state=conversation_state,
+            user_id=current_user.id,
+        )
 
         if conversation is None:
             conversation = await create_conversation(
-                db=db, 
+                db=db,
                 user_id=current_user.id,
-                )
+            )
 
         await add_message(
             db=db,
             conversation_id=conversation.id,
             role="user",
             content=request.user_message,
+        )
+
+        await update_conversation_state(
+            db=db,
+            conversation=conversation,
+            state=llm_response.conversation_state,
         )
 
         if llm_response.action == "ask_question":
@@ -139,6 +161,7 @@ async def chat(
                 conversation_id=conversation.id,
                 message=llm_response.message,
                 suggestions=llm_response.suggestions,
+                conversation_state=llm_response.conversation_state,
             )
 
         if llm_response.action == "final_prompt":
@@ -155,6 +178,8 @@ async def chat(
                 action="final_prompt",
                 conversation_id=conversation.id,
                 prompt=llm_response.prompt,
+                conversation_state=llm_response.conversation_state,
+                prompt_review=llm_response.prompt_review,
             )
 
         await db.rollback()

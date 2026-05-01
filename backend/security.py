@@ -58,7 +58,7 @@ def get_token_from_request(request: Request) -> str:
     if auth_header and auth_header.startswith("Bearer "):
         return auth_header.removeprefix("Bearer ").strip()
 
-    token_cookie = request.cookies.get("access_token")
+    token_cookie = request.cookies.get(settings.AUTH_COOKIE_NAME)
 
     if token_cookie:
         return token_cookie
