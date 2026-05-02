@@ -183,6 +183,16 @@ Regression learned: message ordering cannot rely only on Postgres `now()` timest
 - Keep tests privacy-safe: do not use real user data, API keys, OAuth tokens, cookies, or live OpenAI calls.
 - Abuse protection should run before expensive external calls. For `/chat`, assert the rate-limited path does not call the fake agent.
 
+## Lessons Learned From Review Misses
+
+- Treat this `AGENTS.md` as an active review checklist, not just background context. Before saying the repo is ready to share, explicitly check security, config, migrations, persistence behavior, and OpenAI-call settings.
+- Never commit real-looking secrets or credentials in source-controlled files, examples, docs, compose files, or project memory. `docker-compose.yml` should reference values like `${POSTGRES_PASSWORD}`, and command examples in this file should use placeholders rather than real passwords.
+- Rate-limit maintenance must preserve the same isolation as rate-limit enforcement. Cleanup queries should be scoped to the relevant `user_id` and `action`, not delete unrelated users' events while holding only a per-user/action advisory lock.
+- Alembic autogenerate only sees models imported into migration metadata setup. When adding a model such as `RateLimitEvent`, update `backend/migrations/env.py` imports so schema drift is not silently missed.
+- If a setting exists in `backend/config.py`, production-facing wiring should use it. CORS origins should come from `settings.FRONTEND_URL` or an explicit configured allowlist, not hardcoded localhost values.
+- SQLAlchemy-side `onupdate` is not a DB-level guarantee. If `updated_at` must change for raw SQL or external updates, add a database-level trigger or other explicit database mechanism and test it.
+- OpenAI `prompt_cache_key` should describe stable reusable prompt content, not per-user identity. Use a stable/versioned cache key for shared instructions/schema, while keeping user-specific identity in `safety_identifier`.
+
 ## Next Improvements
 
 Highest-value improvements to consider next:

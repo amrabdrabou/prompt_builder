@@ -1,3 +1,6 @@
+# Secrets
+.env
+
 # Python
 backend/venv/
 backend/.venv/
@@ -27,3 +30,4 @@ Thumbs.db
 .cursorrules
 .cursorignore
 CLAUDE.md
+AGENTS.md

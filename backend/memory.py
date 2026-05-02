@@ -197,7 +197,11 @@ async def enforce_rate_limit(
     )
 
     await db.execute(
-        delete(RateLimitEvent).where(RateLimitEvent.created_at < cleanup_cutoff)
+        delete(RateLimitEvent).where(
+            RateLimitEvent.user_id == user_id,
+            RateLimitEvent.action == action,
+            RateLimitEvent.created_at < cleanup_cutoff,
+        )
     )
 
     for policy in active_policies:

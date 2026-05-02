@@ -108,7 +108,6 @@ class PromptBuilderAgent:
             },
             store=False,
             safety_identifier=user_id,
-            prompt_cache_key=user_id,
         )
 
     def build_repair_message(self, validation_error: Exception | None) -> dict[str, str]:
