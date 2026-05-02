@@ -119,8 +119,10 @@ class PromptBuilderAgent:
                 "Return a corrected JSON response only. If you are returning a "
                 "final_prompt, review and fix it first: it must be clear, must not "
                 "invent details, must be valid XML with root <prompt>, must not have "
-                "critical missing information, and prompt_review must accurately pass "
-                f"only when fixed. Validation error: {validation_error}"
+                "critical missing information, must include non-empty role, goal, "
+                "context, instructions, constraints, and output_format tags, must not "
+                "include placeholders, and prompt_review must accurately pass with "
+                f"quality_score >= 85 only when fixed. Validation error: {validation_error}"
             ),
         }
 
@@ -132,9 +134,11 @@ class PromptBuilderAgent:
         validation_attempt: int,
     ) -> None:
         logger.info(
-            "Prompt builder LLM response model=%s action=%s validation_attempt=%s latency_ms=%.2f input_tokens=%s output_tokens=%s total_tokens=%s",
+            "Prompt builder LLM response model=%s action=%s prompt_type=%s quality_score=%s validation_attempt=%s latency_ms=%.2f input_tokens=%s output_tokens=%s total_tokens=%s",
             settings.LLM_MODEL,
             llm_response.action,
+            llm_response.conversation_state.prompt_type,
+            llm_response.prompt_review.quality_score,
             validation_attempt,
             latency_ms,
             getattr(usage, "input_tokens", None),

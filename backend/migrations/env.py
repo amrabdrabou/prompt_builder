@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from config import settings
 from database import Base
-from models import Conversation, Message, User
+from models import Conversation, FinalPrompt, Message, User
 
 
 config = context.config

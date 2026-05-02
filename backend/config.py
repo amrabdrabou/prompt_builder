@@ -26,6 +26,18 @@ class Settings:
 
     SQL_ECHO: bool = str_to_bool(os.getenv("SQL_ECHO"), default=False)
     MAX_HISTORY_MESSAGES: int = int(os.getenv("MAX_HISTORY_MESSAGES", "12"))
+    CHAT_RATE_LIMIT_SHORT_WINDOW_SECONDS: int = int(
+        os.getenv("CHAT_RATE_LIMIT_SHORT_WINDOW_SECONDS", "60")
+    )
+    CHAT_RATE_LIMIT_SHORT_MAX_REQUESTS: int = int(
+        os.getenv("CHAT_RATE_LIMIT_SHORT_MAX_REQUESTS", "10")
+    )
+    CHAT_RATE_LIMIT_LONG_WINDOW_SECONDS: int = int(
+        os.getenv("CHAT_RATE_LIMIT_LONG_WINDOW_SECONDS", "3600")
+    )
+    CHAT_RATE_LIMIT_LONG_MAX_REQUESTS: int = int(
+        os.getenv("CHAT_RATE_LIMIT_LONG_MAX_REQUESTS", "100")
+    )
 
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
