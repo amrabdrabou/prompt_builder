@@ -330,6 +330,7 @@ async def get_messages(
     conversation_id: str,
     limit: int | None = None,
 ) -> list[Message]:
+    # Order desc so a LIMIT picks the most recent N rows; reverse to restore asc order.
     query = (
         select(Message)
         .where(Message.conversation_id == conversation_id)
@@ -341,6 +342,4 @@ async def get_messages(
 
     result = await db.execute(query)
 
-    messages = list(result.scalars().all())
-
-    return list(reversed(messages))
+    return list(reversed(list(result.scalars().all())))

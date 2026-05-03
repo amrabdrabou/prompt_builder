@@ -18,6 +18,7 @@ frontend/.env
 # Cloud / Codex
 .cloud/
 .codex/
+.playwright-mcp/
 
 # System files
 .DS_Store

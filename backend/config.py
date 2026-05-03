@@ -21,11 +21,12 @@ class Settings:
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.3"))
     LLM_MAX_OUTPUT_TOKENS: int = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "2500"))
     OPENAI_TIMEOUT_SECONDS: float = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "30"))
-    OPENAI_MAX_RETRIES: int = int(os.getenv("OPENAI_MAX_RETRIES", "2"))
+    OPENAI_MAX_RETRIES: int = int(os.getenv("OPENAI_MAX_RETRIES", "0"))
     AGENT_VALIDATION_RETRIES: int = int(os.getenv("AGENT_VALIDATION_RETRIES", "1"))
 
     SQL_ECHO: bool = str_to_bool(os.getenv("SQL_ECHO"), default=False)
     MAX_HISTORY_MESSAGES: int = int(os.getenv("MAX_HISTORY_MESSAGES", "12"))
+    MAX_HISTORY_CHARS: int = int(os.getenv("MAX_HISTORY_CHARS", "32000"))
     CHAT_RATE_LIMIT_SHORT_WINDOW_SECONDS: int = int(
         os.getenv("CHAT_RATE_LIMIT_SHORT_WINDOW_SECONDS", "60")
     )

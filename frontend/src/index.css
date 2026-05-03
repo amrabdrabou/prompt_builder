@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #f7f8f8;
+  background: #010102;
+  font-family: Inter, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #010102;
+}
+
+.auth-atmosphere {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(224, 193, 161, 0.20), transparent 30%),
+    radial-gradient(circle at 85% 88%, rgba(167, 140, 111, 0.18), transparent 34%),
+    linear-gradient(135deg, rgba(56, 52, 50, 0.24), transparent 42%),
+    #100e0c;
+}
+
+.auth-grid {
+  background-image:
+    linear-gradient(to right, #383432 1px, transparent 1px),
+    linear-gradient(to bottom, #383432 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.workspace-grid {
+  background-image:
+    linear-gradient(to right, rgba(232, 225, 221, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(232, 225, 221, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.workspace-glass {
+  border: 1px solid rgba(154, 143, 132, 0.2);
+  backdrop-filter: blur(20px);
+}
+
+.workspace-scan-hover:hover {
+  background-image: linear-gradient(
+    90deg,
+    rgba(224, 193, 161, 0) 0%,
+    rgba(224, 193, 161, 0.05) 50%,
+    rgba(224, 193, 161, 0) 100%
+  );
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  color: #ffffff;
+  background: #5e6ad2;
+}

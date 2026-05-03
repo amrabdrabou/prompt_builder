@@ -1,3 +1,4 @@
+import json
 import uuid
 import unittest
 
@@ -23,6 +24,15 @@ def get_host_test_database_url() -> str:
         url = url.set(host="localhost", port=5433)
 
     return url.render_as_string(hide_password=False)
+
+
+def parse_sse(text: str) -> list[dict]:
+    """Return parsed data objects from an SSE response body."""
+    return [
+        json.loads(line[6:])
+        for line in text.splitlines()
+        if line.startswith("data: ")
+    ]
 
 
 def reviewed_prompt_response(
@@ -87,6 +97,12 @@ class FakeAgent:
 
         return self.responses.pop(0)
 
+    async def stream_run(self, conversation_messages, conversation_state, user_id):
+        llm_response = await self.run(conversation_messages, conversation_state, user_id)
+        if llm_response.action == "ask_question":
+            yield llm_response.message
+        yield llm_response
+
 
 class ChatEndpointTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -147,6 +163,32 @@ class ChatEndpointTests(unittest.IsolatedAsyncioTestCase):
 
         await self.engine.dispose()
 
+    async def test_create_conversation_endpoint_returns_empty_user_owned_state(self):
+        response = await self.client.post("/conversations")
+
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        conversation_id = body["id"]
+
+        self.assertEqual(body["prompt_type"], "other")
+        self.assertEqual(body["conversation_state"]["prompt_type"], "other")
+        self.assertEqual(body["conversation_state"]["goal"], "")
+        self.assertEqual(body["conversation_state"]["output_format"], "")
+        self.assertFalse(body["conversation_state"]["ready_to_finalize"])
+
+        async with self.SessionLocal() as session:
+            conversation = await session.get(Conversation, conversation_id)
+
+            self.assertIsNotNone(conversation)
+            self.assertEqual(conversation.user_id, self.user_id)
+            self.assertEqual(conversation.prompt_type, "other")
+
+        list_response = await self.client.get("/conversations")
+        self.assertEqual(list_response.status_code, 200)
+        self.assertTrue(
+            any(conversation["id"] == conversation_id for conversation in list_response.json())
+        )
+
     async def test_chat_ask_question_flow_persists_messages_and_state(self):
         self.fake_agent.responses = [
             AgentLLMResponse(
@@ -180,9 +222,17 @@ class ChatEndpointTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        body = response.json()
+        events = parse_sse(response.text)
+        status_messages = [
+            event["message"]
+            for event in events
+            if event["type"] == "status"
+        ]
+        body = events[-1]
         conversation_id = body["conversation_id"]
 
+        self.assertIn("Reading your request", status_messages)
+        self.assertIn("Saving the conversation", status_messages)
         self.assertEqual(body["action"], "ask_question")
         self.assertEqual(body["message"], "Who is the audience for this prompt?")
         self.assertEqual(body["conversation_state"]["title"], "Summary Prompt")
@@ -215,6 +265,73 @@ class ChatEndpointTests(unittest.IsolatedAsyncioTestCase):
             "Help me write a prompt for summarizing text.",
         )
 
+    async def test_chat_first_turn_uses_existing_empty_conversation(self):
+        create_response = await self.client.post("/conversations")
+        self.assertEqual(create_response.status_code, 201)
+        conversation_id = create_response.json()["id"]
+
+        self.fake_agent.responses = [
+            AgentLLMResponse(
+                action="ask_question",
+                message="Who should use this prompt?",
+                suggestions=["Developers", "Students"],
+                prompt="",
+                conversation_state=ConversationState(
+                    title="Summary Prompt",
+                    prompt_type="writing",
+                    goal="Create a summary prompt",
+                    audience="",
+                    constraints=[],
+                    output_format="",
+                    confidence={
+                        "goal": 80,
+                        "audience": 0,
+                        "constraints": 0,
+                        "output_format": 0,
+                    },
+                    missing_fields=["Audience"],
+                    ready_to_finalize=False,
+                ),
+                prompt_review=PromptReview(),
+            )
+        ]
+
+        chat_response = await self.client.post(
+            "/chat",
+            json={
+                "conversation_id": conversation_id,
+                "user_message": "Help me write a prompt for summarizing text.",
+            },
+        )
+
+        self.assertEqual(chat_response.status_code, 200)
+        body = parse_sse(chat_response.text)[-1]
+        self.assertEqual(body["conversation_id"], conversation_id)
+        self.assertEqual(body["action"], "ask_question")
+        self.assertEqual(len(self.fake_agent.calls), 1)
+        self.assertEqual(self.fake_agent.calls[0]["conversation_state"].prompt_type, "other")
+        self.assertEqual(
+            self.fake_agent.calls[0]["conversation_messages"],
+            [{"role": "user", "content": "Help me write a prompt for summarizing text."}],
+        )
+
+        async with self.SessionLocal() as session:
+            conversations = (
+                await session.execute(
+                    select(Conversation).where(Conversation.user_id == self.user_id)
+                )
+            ).scalars().all()
+            messages = (
+                await session.execute(
+                    select(Message)
+                    .where(Message.conversation_id == conversation_id)
+                    .order_by(Message.created_at)
+                )
+            ).scalars().all()
+
+            self.assertEqual(len(conversations), 1)
+            self.assertEqual([message.role for message in messages], ["user", "assistant"])
+
     async def test_chat_final_prompt_flow_persists_state_and_final_prompt(self):
         self.fake_agent.responses = [reviewed_prompt_response()]
 
@@ -224,7 +341,7 @@ class ChatEndpointTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        body = response.json()
+        body = parse_sse(response.text)[-1]
         conversation_id = body["conversation_id"]
         prompt_id = body["prompt_id"]
 
@@ -288,7 +405,7 @@ class ChatEndpointTests(unittest.IsolatedAsyncioTestCase):
             "/chat",
             json={"user_message": "Create a summary prompt for general readers."},
         )
-        conversation_id = first_response.json()["conversation_id"]
+        conversation_id = parse_sse(first_response.text)[-1]["conversation_id"]
 
         second_response = await self.client.post(
             "/chat",
@@ -299,7 +416,7 @@ class ChatEndpointTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(second_response.status_code, 200)
-        self.assertEqual(second_response.json()["action"], "final_prompt")
+        self.assertEqual(parse_sse(second_response.text)[-1]["action"], "final_prompt")
         self.assertEqual(len(self.fake_agent.calls), 2)
 
         second_call = self.fake_agent.calls[1]
@@ -381,7 +498,7 @@ class ChatEndpointTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(chat_response.status_code, 200)
 
-        chat_body = chat_response.json()
+        chat_body = parse_sse(chat_response.text)[-1]
         conversation_id = chat_body["conversation_id"]
         prompt_id = chat_body["prompt_id"]
 

@@ -1,9 +1,12 @@
+import asyncio
+import json
 import logging
 from functools import lru_cache
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from starlette.middleware.sessions import SessionMiddleware
@@ -29,7 +32,7 @@ from memory import (
 )
 from models import Conversation, FinalPrompt, Message, User
 from schemas import (
-    AgentResponse,
+    AgentLLMResponse,
     AskQuestionResponse,
     ChatRequest,
     ConversationDetailResponse,
@@ -50,11 +53,16 @@ app = FastAPI(title="Prompt Builder Agent API")
 if not settings.SESSION_SECRET_KEY:
     raise RuntimeError("SESSION_SECRET_KEY is missing. Add it to backend/.env")
 
+if not settings.AUTH_COOKIE_SECURE:
+    logger.warning(
+        "AUTH_COOKIE_SECURE is False — auth cookies are not marked Secure. "
+        "Set AUTH_COOKIE_SECURE=True in production."
+    )
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.SESSION_SECRET_KEY,
 )
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -65,6 +73,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+
 
 @lru_cache
 def get_agent() -> PromptBuilderAgent:
@@ -82,6 +91,19 @@ def get_chat_rate_limit_policies() -> list[RateLimitPolicy]:
             window_seconds=settings.CHAT_RATE_LIMIT_LONG_WINDOW_SECONDS,
         ),
     ]
+
+
+def _sse(data: dict) -> str:
+    return f"data: {json.dumps(data)}\n\n"
+
+
+CHAT_PROGRESS_STEPS = (
+    "Reading your request",
+    "Checking the conversation state",
+    "Finding the next missing detail",
+    "Preparing a clean response",
+)
+
 
 @app.get("/")
 async def health_check():
@@ -155,6 +177,24 @@ async def list_conversations(
         to_conversation_summary(conversation)
         for conversation in conversations
     ]
+
+
+@app.post(
+    "/conversations",
+    response_model=ConversationDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_empty_conversation(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    conversation = await create_conversation(
+        db=db,
+        user_id=current_user.id,
+    )
+    await db.commit()
+
+    return to_conversation_detail(conversation)
 
 
 @app.get("/conversations/{conversation_id}", response_model=ConversationDetailResponse)
@@ -239,169 +279,161 @@ async def read_conversation_final_prompts(
     ]
 
 
-@app.post("/chat", response_model=AgentResponse)
+@app.post("/chat")
 async def chat(
     request: ChatRequest,
     db: AsyncSession = Depends(get_db),
     agent: PromptBuilderAgent = Depends(get_agent),
     current_user: User = Depends(get_current_user),
 ):
-    try:
-        conversation = None
+    # ── Pre-streaming: resolve conversation and enforce rate limit ──────────
+    conversation = None
 
-        if request.conversation_id:
-            conversation = await get_conversation(
-                db=db,
-                conversation_id=str(request.conversation_id),
-                user_id=current_user.id,
-            )
-
-            if conversation is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Conversation not found.",
-                )
-
-            db_messages = await get_messages(
-                db=db,
-                conversation_id=conversation.id,
-                limit=settings.MAX_HISTORY_MESSAGES,
-            )
-
-        else:
-            db_messages = []
-            conversation_state = ConversationState()
-
-        if conversation is not None:
-            conversation_state = get_conversation_state(conversation)
-
-        try:
-            await enforce_rate_limit(
-                db=db,
-                user_id=current_user.id,
-                action="chat",
-                policies=get_chat_rate_limit_policies(),
-            )
-            await db.commit()
-        except RateLimitExceeded as error:
-            await db.rollback()
-            logger.warning(
-                "Rate limit exceeded",
-                extra={
-                    "user_id": current_user.id,
-                    "action": "chat",
-                    "retry_after_seconds": error.retry_after_seconds,
-                },
-            )
-            raise HTTPException(
-                status_code=429,
-                detail="Too many chat requests. Please try again shortly.",
-                headers={"Retry-After": str(error.retry_after_seconds)},
-            ) from error
-
-        conversation_messages = [
-            {
-                "role": message.role,
-                "content": message.content,
-            }
-            for message in db_messages
-        ]
-
-        conversation_messages.append(
-            {
-                "role": "user",
-                "content": request.user_message,
-            }
-        )
-
-        llm_response = await agent.run(
-            conversation_messages=conversation_messages,
-            conversation_state=conversation_state,
+    if request.conversation_id:
+        conversation = await get_conversation(
+            db=db,
+            conversation_id=str(request.conversation_id),
             user_id=current_user.id,
         )
 
         if conversation is None:
-            conversation = await create_conversation(
-                db=db,
-                user_id=current_user.id,
+            raise HTTPException(
+                status_code=404,
+                detail="Conversation not found.",
             )
 
-        await add_message(
+        db_messages = await get_messages(
             db=db,
             conversation_id=conversation.id,
-            role="user",
-            content=request.user_message,
+            limit=settings.MAX_HISTORY_MESSAGES,
         )
+    else:
+        db_messages = []
 
-        await update_conversation_state(
+    conversation_state = (
+        get_conversation_state(conversation)
+        if conversation is not None
+        else ConversationState()
+    )
+
+    try:
+        await enforce_rate_limit(
             db=db,
-            conversation=conversation,
-            state=llm_response.conversation_state,
+            user_id=current_user.id,
+            action="chat",
+            policies=get_chat_rate_limit_policies(),
         )
-
-        if llm_response.action == "ask_question":
-            await add_message(
-                db=db,
-                conversation_id=conversation.id,
-                role="assistant",
-                content=llm_response.message,
-            )
-
-            await db.commit()
-
-            return AskQuestionResponse(
-                action="ask_question",
-                conversation_id=conversation.id,
-                message=llm_response.message,
-                suggestions=llm_response.suggestions,
-                conversation_state=llm_response.conversation_state,
-            )
-
-        if llm_response.action == "final_prompt":
-            final_prompt = await create_final_prompt(
-                db=db,
-                conversation_id=conversation.id,
-                prompt=llm_response.prompt,
-                prompt_type=llm_response.conversation_state.prompt_type,
-                quality_score=llm_response.prompt_review.quality_score,
-                review=llm_response.prompt_review,
-            )
-
-            await add_message(
-                db=db,
-                conversation_id=conversation.id,
-                role="assistant",
-                content=llm_response.prompt,
-            )
-
-            await db.commit()
-
-            return FinalPromptResponse(
-                action="final_prompt",
-                conversation_id=conversation.id,
-                prompt_id=final_prompt.id,
-                prompt=llm_response.prompt,
-                conversation_state=llm_response.conversation_state,
-                prompt_review=llm_response.prompt_review,
-            )
-
+        await db.commit()
+    except RateLimitExceeded as error:
         await db.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail="Unknown agent action.",
+        logger.warning(
+            "Rate limit exceeded",
+            extra={
+                "user_id": current_user.id,
+                "action": "chat",
+                "retry_after_seconds": error.retry_after_seconds,
+            },
         )
-
-    except HTTPException:
-        await db.rollback()
-        raise
-
-    except Exception as error:
-        await db.rollback()
-
-        logger.exception("Unexpected error while processing chat request")
-
         raise HTTPException(
-            status_code=500,
-            detail="Something went wrong while processing the chat request.",
+            status_code=429,
+            detail="Too many chat requests. Please try again shortly.",
+            headers={"Retry-After": str(error.retry_after_seconds)},
         ) from error
+
+    conversation_messages = [
+        {"role": m.role, "content": m.content}
+        for m in db_messages
+    ]
+    conversation_messages.append({"role": "user", "content": request.user_message})
+
+    # ── Streaming generator ─────────────────────────────────────────────────
+    async def generate():
+        nonlocal conversation
+        try:
+            for step in CHAT_PROGRESS_STEPS:
+                yield _sse({"type": "status", "message": step})
+                await asyncio.sleep(0.05)
+
+            async for item in agent.stream_run(
+                conversation_messages=conversation_messages,
+                conversation_state=conversation_state,
+                user_id=current_user.id,
+            ):
+                if isinstance(item, str):
+                    yield _sse({"type": "text_delta", "text": item})
+                    continue
+
+                # Final item: AgentLLMResponse — persist then emit done event
+                llm_response: AgentLLMResponse = item
+                yield _sse({"type": "status", "message": "Saving the conversation"})
+
+                if conversation is None:
+                    conversation = await create_conversation(
+                        db=db,
+                        user_id=current_user.id,
+                    )
+
+                await add_message(
+                    db=db,
+                    conversation_id=conversation.id,
+                    role="user",
+                    content=request.user_message,
+                )
+
+                await update_conversation_state(
+                    db=db,
+                    conversation=conversation,
+                    state=llm_response.conversation_state,
+                )
+
+                if llm_response.action == "ask_question":
+                    await add_message(
+                        db=db,
+                        conversation_id=conversation.id,
+                        role="assistant",
+                        content=llm_response.message,
+                    )
+                    await db.commit()
+
+                    response_obj = AskQuestionResponse(
+                        action="ask_question",
+                        conversation_id=conversation.id,
+                        message=llm_response.message,
+                        suggestions=llm_response.suggestions,
+                        conversation_state=llm_response.conversation_state,
+                    )
+                    yield _sse({"type": "ask_question", **response_obj.model_dump(mode="json")})
+
+                elif llm_response.action == "final_prompt":
+                    final_prompt = await create_final_prompt(
+                        db=db,
+                        conversation_id=conversation.id,
+                        prompt=llm_response.prompt,
+                        prompt_type=llm_response.conversation_state.prompt_type,
+                        quality_score=llm_response.prompt_review.quality_score,
+                        review=llm_response.prompt_review,
+                    )
+                    await add_message(
+                        db=db,
+                        conversation_id=conversation.id,
+                        role="assistant",
+                        content=llm_response.prompt,
+                    )
+                    await db.commit()
+
+                    response_obj = FinalPromptResponse(
+                        action="final_prompt",
+                        conversation_id=conversation.id,
+                        prompt_id=final_prompt.id,
+                        prompt=llm_response.prompt,
+                        conversation_state=llm_response.conversation_state,
+                        prompt_review=llm_response.prompt_review,
+                    )
+                    yield _sse({"type": "final_prompt", **response_obj.model_dump(mode="json")})
+
+        except Exception:
+            await db.rollback()
+            logger.exception("Unexpected error in chat stream")
+            yield _sse({"type": "error", "detail": "Something went wrong while processing the chat request."})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

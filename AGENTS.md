@@ -1,39 +1,69 @@
 # Project Memory For Coding Agents
 
-## Project
+## Purpose
 
-Prompt Builder is a FastAPI backend for a conversational prompt-building agent. The agent does not complete the user's original task. It asks clarifying questions, maintains structured state, and eventually returns a reviewed XML prompt.
+Prompt Builder is a conversational prompt-building product. The assistant does not complete the user's original task directly; it asks clarifying questions, maintains structured conversation state, and eventually returns a reviewed XML prompt.
 
-Frontend is not implemented yet. `docker-compose.yml` keeps the frontend service behind the `frontend` profile.
+Keep `AGENTS.md` and `CLAUDE.md` in sync whenever architecture, commands, endpoints, validation rules, migrations, or major workflow lessons change.
 
-## Current Architecture
+## Architecture
 
 - Backend: FastAPI, async SQLAlchemy, Alembic, PostgreSQL.
-- Auth: Google OAuth via Authlib, JWT stored in an HTTP-only cookie.
-- LLM: OpenAI Responses API, strict JSON schema, `store=False`.
-- DB tables: `users`, `conversations`, `messages`, `final_prompts`, `rate_limit_events`, `alembic_version`.
+- Frontend: Vite, React, TypeScript, Tailwind CSS.
+- Auth: Google OAuth through Authlib. JWTs are stored only in HTTP-only cookies.
+- LLM: OpenAI Responses API with strict JSON schema, `store=False`, and `stream=True`.
+- Streaming behavior: `/chat` returns SSE. The backend buffers and validates the full JSON response, then replays `ask_question` text word-by-word to the frontend. This is a UX animation, not true time-to-first-token streaming.
+- Database tables: `users`, `conversations`, `messages`, `final_prompts`, `rate_limit_events`, `alembic_version`.
 
-Core files:
-- `backend/main.py`: FastAPI app and `/chat`.
-- `backend/agent.py`: OpenAI Responses call, validation retry, metadata-only logging.
-- `backend/prompts.py`: Agent behavior and response contract.
+## Important Files
+
+- `backend/main.py`: FastAPI app, auth routes, conversation routes, `/chat` SSE endpoint.
+- `backend/agent.py`: OpenAI Responses call, schema validation retry, metadata-only logging.
+- `backend/prompts.py`: Agent instructions and response contract.
 - `backend/schemas.py`: API schemas, LLM schema, prompt review, XML validation.
-- `backend/memory.py`: DB helpers for users, conversations, messages, final prompts.
+- `backend/memory.py`: Database helpers for users, conversations, messages, and final prompts.
 - `backend/models.py`: SQLAlchemy models.
-- `backend/config.py`: environment settings.
+- `backend/config.py`: Environment settings.
+- `frontend/src/App.tsx`: Route/auth gate and workspace composition.
+- `frontend/src/api/`: Authenticated fetch client, auth helpers, chat SSE client, conversation API helpers.
+- `frontend/src/hooks/`: Auth/session, path routing, chat streaming, conversation loading.
+- `frontend/src/pages/auth/AuthPage.tsx`: Shared login/register page. Both modes use Google OAuth.
+- `frontend/src/components/auth/`: Auth layout and Google sign-in components.
+- `frontend/src/components/layout/`: App shell and sidebar layout.
+- `frontend/src/components/start/`: Authenticated start page and prompt starter controls.
+- `frontend/src/components/chat/`: Conversation workspace, message thread, composer, suggestions, intelligence panel, final prompt card.
+- `frontend/src/components/ui/`: Shared UI primitives.
+- `frontend/src/types/index.ts`: Frontend API and UI types.
+- `scripts/validate.sh`: Full local validation workflow.
 
-Authenticated API endpoints:
-- `POST /chat`: send a user message, ask next question or return final prompt.
-- `GET /conversations`: list the current user's conversations.
-- `GET /conversations/{conversation_id}`: get one current-user-owned conversation and state.
-- `GET /conversations/{conversation_id}/messages`: get messages for one current-user-owned conversation.
-- `GET /conversations/{conversation_id}/final-prompts`: get saved final prompts for one current-user-owned conversation.
+## API Contract
 
-All conversation read endpoints must enforce ownership through `current_user.id`; guessed IDs from another user should return 404.
+Authenticated endpoints:
 
-## Agent Flow
+- `GET /auth/me`: Return the current user from the auth cookie.
+- `POST /auth/logout`: Clear the auth cookie.
+- `GET /auth/google/login`: Redirect to Google OAuth.
+- `GET /auth/google/callback`: Create or load the Google user, set the auth cookie, redirect to the frontend.
+- `GET /conversations`: List current-user conversations.
+- `POST /conversations`: Create an empty current-user conversation and return its initial state.
+- `GET /conversations/{conversation_id}`: Return one current-user conversation and state.
+- `GET /conversations/{conversation_id}/messages`: Return messages for one current-user conversation.
+- `GET /conversations/{conversation_id}/final-prompts`: Return saved final prompts for one current-user conversation.
+- `POST /chat`: Send a user message and stream safe progress plus the final agent result as SSE.
 
-The agent workflow is:
+`/chat` SSE events:
+
+- `status`: Safe progress label for the frontend activity timeline.
+- `text_delta`: Word chunks for `ask_question` replay.
+- `ask_question`: Done event when the agent needs more information.
+- `final_prompt`: Done event when the agent returns the reviewed XML prompt.
+- `error`: Safe frontend error message.
+
+All conversation reads must enforce ownership with `current_user.id`. Guessed conversation IDs from another user should return `404`.
+
+## Agent Behavior
+
+Normal workflow:
 
 ```text
 Analyze rough prompt
@@ -42,12 +72,13 @@ Update structured state
 Identify missing information
 Ask the next best question OR generate final prompt
 Review final prompt quality
-Fix once if backend validation fails
+Repair once if backend validation fails
 Persist state/messages/final prompt
 Return result
 ```
 
-Structured conversation state:
+Conversation state fields:
+
 - `title`
 - `prompt_type`: `writing`, `coding`, `marketing`, `analysis`, `research`, `planning`, `image_generation`, `automation`, `other`
 - `goal`
@@ -58,7 +89,8 @@ Structured conversation state:
 - `missing_fields`
 - `ready_to_finalize`
 
-Final prompt review:
+Final prompt review fields:
+
 - `is_clear`
 - `uses_only_known_details`
 - `is_xml_valid`
@@ -68,141 +100,180 @@ Final prompt review:
 - `missing_or_unclear_items`
 - `fixes_applied`
 
-Backend requires final prompts to have:
-- valid XML
-- root `<prompt>`
-- non-empty tags: `role`, `goal`, `context`, `instructions`, `constraints`, `output_format`
-- no unresolved placeholders such as `TODO`, `[insert...]`, `{{...}}`, `<...>`
-- `quality_score >= 85`
-- size limits for agent questions, suggestions, state text, review list items, and final prompts
+Final prompts must:
 
-Validation exists at multiple layers:
-- FastAPI/Pydantic request and response schemas validate user input, UUID path params, agent output shape, prompt type, message role, quality score, XML structure, and output size limits.
-- `memory.add_message()` rejects invalid message roles before any DB write.
-- PostgreSQL check constraints enforce prompt type, message role, and final prompt quality-score bounds as a backstop.
-- Every future project improvement should explicitly ask: what should be validated at the API/schema layer, business-logic layer, DB layer, and test layer?
+- Be valid XML with root `<prompt>`.
+- Include non-empty `role`, `goal`, `context`, `instructions`, `constraints`, and `output_format` tags.
+- Avoid unresolved placeholders such as `TODO`, `[insert...]`, `{{...}}`, and generic `<...>`.
+- Have `quality_score >= 85`.
+- Respect schema size limits for questions, suggestions, state text, review items, and final prompt text.
 
-## Cost, Security, Privacy
+## Validation And Safety Rules
 
+- Validate early at the API/schema layer, business-logic layer, database layer, and test layer.
+- Use typed UUID path params for conversation routes.
+- Keep message roles limited to `user` and `assistant`.
+- Keep prompt types limited to the known prompt-type set.
+- Keep final prompt quality scores within `0..100`.
+- `memory.add_message()` must reject invalid message roles before DB writes.
+- PostgreSQL check constraints should backstop stable small enums and numeric ranges.
+- Generated OpenAI JSON schema is part of the product contract; test it when Pydantic models change.
 - Do not add extra model calls by default. The normal flow should use one LLM call per user turn.
-- One optional repair attempt is allowed only if the LLM response fails JSON/schema validation.
-- `/chat` has database-backed per-user rate limiting before the OpenAI call. Defaults are 10 requests/minute and 100 requests/hour; set max requests to `0` to disable a policy in local testing only. Enforcement uses a PostgreSQL advisory transaction lock per user/action to avoid parallel requests bypassing the count.
-- OpenAI calls should use `store=False` where supported by the API call being used.
-- Logs must not include user messages, final prompts, secrets, OAuth data, JWTs, cookies, authorization headers, or database URLs.
-- Metadata logging is allowed: model name, action type, prompt category/type, latency, token counts, response status, and validation errors without raw content.
-- Do not ask users for sensitive personal data unless the prompt explicitly requires it.
-- If a prompt request touches health, legal, financial, identity, or other sensitive areas, ask only for the minimum necessary details and avoid collecting unnecessary personal information.
-- Never expose internal error details to the frontend. Log safe debugging metadata on the backend instead.
-- Keep API keys and secrets only in environment variables or secret managers, never in frontend code or committed files.
+- One repair attempt is allowed only when the LLM response fails JSON/schema validation.
+- `/chat` rate limiting must run before any OpenAI call.
+- History trimming is character-count based through `MAX_HISTORY_CHARS`; preserve the current user turn.
+- OpenAI calls should use `store=False` when supported.
+- Logs must never include user messages, final prompts, secrets, OAuth data, JWTs, cookies, authorization headers, or database URLs.
+- Metadata-only logging is allowed: model, action type, prompt type, latency, token counts, response status, and validation errors without raw content.
+- Never expose internal error details to the frontend.
+- Keep secrets in environment variables or secret managers, never frontend code or committed files.
+
+## Frontend Rules
+
+- Frontend auth is Google OAuth only. Do not add email/password UI without backend endpoints, schemas, persistence, validation, and tests.
+- Requests use `credentials: "include"` for HTTP-only cookie auth. Never store JWTs in frontend state or localStorage.
+- Keep conversation fetching behind the auth gate. Unauthenticated users should call `/auth/me` only, not conversation endpoints.
+- Routing is intentionally lightweight in `frontend/src/hooks/useRoute.ts`; add React Router only if navigation complexity clearly requires it.
+- Auth routes are `/login` and `/register`; authenticated routes are `/` and `/c/{conversation_id}`.
+- Start-page submission first calls `POST /conversations`, navigates to `/c/{conversation_id}`, then sends `/chat`.
+- The "Generate Lazy Prompt" action should finalize from known information without inventing specific facts.
+- Follow `DESIGN.md`: near-black canvas, charcoal surfaces, hairline borders, ink text tokens, lavender-blue accent. Prefer semantic Tailwind tokens over raw gray/white classes.
+- Keep components small and focused. Avoid mixing fetching, orchestration, layout, and presentation in one large file.
+- Remove dead or duplicate frontend code during frontend changes.
 
 ## Commands
 
-Run backend tests:
+Full local validation:
+
+```bash
+./scripts/validate.sh
+```
+
+Backend tests:
 
 ```bash
 cd backend
 ../backend/.venv/bin/python -m unittest discover -s tests
 ```
 
-Compile check:
+Eval fixture tests:
+
+```bash
+cd backend
+../backend/.venv/bin/python -m unittest tests.test_eval_fixtures -v
+```
+
+Python compile check:
 
 ```bash
 backend/.venv/bin/python -m compileall backend -q
 ```
 
-Check app import and OpenAPI generation:
+FastAPI import and OpenAPI generation:
 
 ```bash
 cd backend
 ../backend/.venv/bin/python -c "from main import app; schema=app.openapi(); print(app.title); print(sorted(schema.get('components', {}).get('schemas', {}).keys()))"
 ```
 
-Run migrations from host against the Compose-mapped DB:
+Run migrations from the host against the Compose-mapped database:
 
 ```bash
 cd backend
-DATABASE_URL='postgresql+psycopg://amora:Sommar26@localhost:5433/prompt_builder' ../backend/.venv/bin/alembic upgrade head
+DATABASE_URL='postgresql+psycopg://<user>:<password>@localhost:5433/prompt_builder' ../backend/.venv/bin/alembic upgrade head
 ```
 
 Check current DB revision:
 
 ```bash
 cd backend
-DATABASE_URL='postgresql+psycopg://amora:Sommar26@localhost:5433/prompt_builder' ../backend/.venv/bin/alembic current
+DATABASE_URL='postgresql+psycopg://<user>:<password>@localhost:5433/prompt_builder' ../backend/.venv/bin/alembic current
 ```
 
-## Important Local Gotchas
+Run frontend locally:
 
-- `backend/.env` may use `postgres` as DB host. That works inside Docker Compose, not from the host shell. Use `localhost:5433` override from host.
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Build frontend:
+
+```bash
+cd frontend
+npm run build
+```
+
+## Verification Checklist
+
+For backend schema, prompt, OpenAI, migration, or persistence changes:
+
+- Run `./scripts/validate.sh`.
+- Check generated OpenAI JSON schema.
+- Check FastAPI OpenAPI generation.
+- Run Alembic `heads`; run `current` when a live DB is available.
+- Verify DB constraints when migrations change.
+
+For frontend auth, routing, API client, or workspace changes:
+
+- Run `npm run build`.
+- Check login and register routes.
+- Check mobile and desktop layouts.
+- Check browser console errors.
+- Confirm unauthenticated users do not call conversation endpoints.
+- Confirm authenticated users can load the workspace.
+- Remove dead components, hooks, imports, and duplicate implementations.
+
+## Tests And Evals
+
+- Route-level `/chat` tests live in `backend/tests/test_chat_endpoint.py`.
+- These tests mock auth and agent/OpenAI boundaries, spend zero OpenAI tokens, and assert both response shape and persisted DB state.
+- They cover conversation creation, ask-question flow, final-prompt flow, persisted state/messages/final prompts, rate limiting, read endpoints, ownership protection, and UUID validation.
+- `/chat` tests parse SSE and use the final done event because safe `status` events can appear first.
+- `FakeAgent` must implement `stream_run()` as an async generator alongside `run()`.
+- Offline eval fixtures live in `backend/evals/fixtures/agent_behavior_scenarios.json`.
+- Eval checks live in `backend/evals/agent_behavior.py` and `backend/tests/test_eval_fixtures.py`.
+
+## Local Gotchas
+
+- `backend/.env` may use `postgres` as DB host. That works inside Docker Compose, not from the host shell. Use `localhost:5433` from the host.
 - Docker socket access may be blocked in the agent shell.
-- If permissions block an important command or file operation, do not burn time trying to route around it. Explain the blocker clearly and ask the user to help manually or grant permission.
+- Google OAuth requires real Google Cloud OAuth credentials. Placeholder values are rejected before redirecting to Google.
 - `backend/venv/`, `backend/.venv/`, and migration `__pycache__` are ignored.
-- `CLAUDE.md` exists but is stale; prefer this `AGENTS.md`.
-- Update this `AGENTS.md` every time project behavior, architecture, commands, endpoints, tests, migrations, or important lessons change. Treat it as shared project memory for future sessions.
+- Frontend dependencies target Node `>=18.19.0` and Vite `6.4.2` or newer in the Vite 6 line.
+- Message ordering should not rely only on Postgres `now()` timestamps inside the same transaction. `memory.add_message()` sets Python UTC timestamps for stable ordering.
 
-## Verification Checklist For Agent Changes
+## Possible Improvements
 
-When changing schemas, prompts, OpenAI calls, or migrations, verify:
+Agent quality:
 
-```text
-Pydantic validation tests
-Generated OpenAI JSON schema
-FastAPI OpenAPI generation
-Python compileall
-Alembic head/current
-DB schema if migrations changed
-```
+- Add prompt refinement mode so users can revise an existing `final_prompt` with requests such as shorter, more formal, more detailed, or with examples.
+- Add prompt export formats alongside XML: plain text, markdown, and JSON-keyed fields.
+- Generate concise conversation titles on the first user message using the existing agent turn when possible, or a cheap separate model call if justified.
+- Add conversation summarization for long threads before older messages fall out of `MAX_HISTORY_CHARS`.
+- Consider smarter model routing: a cheaper/faster model for `ask_question` turns and a stronger model for `final_prompt` generation.
+- Implement true streaming through incremental JSON parsing only if the one-call-per-turn rule and final schema validation can be preserved.
 
-Regression learned: do not only test Pydantic models. Generated JSON schema matters. A previous metadata-stripper bug removed the real `title` field because JSON Schema also uses `title` as metadata; keep the schema regression test.
+Product and frontend:
 
-Validation learned: when adding endpoints or persistence fields, validate early and also add a database backstop when the field has a small allowed set or numeric range. For this app, UUID path params should be typed as `UUID`, roles should stay `user`/`assistant`, prompt types should stay in the known prompt-type set, and final prompt quality scores should stay in `0..100`.
+- Add frontend contract documentation for auth, SSE events, conversation state, read endpoints, and final prompt responses.
+- Improve final prompt UX with version history, copy actions per export format, and clearer revision entry points.
+- Add empty, loading, error, and offline states for every conversation workflow that can fail.
+- Add Playwright coverage for login/register routes, auth-gated workspace behavior, start-page submission, conversation loading, and final prompt display.
+- Add accessibility checks for keyboard navigation, focus states, color contrast, and screen-reader labels.
 
-Mocked `/chat` endpoint tests exist in `backend/tests/test_chat_endpoint.py`. They override auth and the agent, use isolated test rows in the local Postgres DB, and spend zero OpenAI tokens. They cover:
-- ask-question flow
-- final-prompt flow
-- existing conversation state being passed back into the agent
-- state persistence
-- user/assistant message persistence
-- final prompt persistence
-- per-user `/chat` rate limiting returning 429 before the fake agent/OpenAI boundary
-- frontend read endpoints for conversations, messages, and final prompts
-- 404 ownership protection for other users' conversations
-- 422 validation for malformed conversation UUIDs on read endpoints
+Reliability and operations:
 
-Regression learned: message ordering cannot rely only on Postgres `now()` timestamps when user and assistant messages are inserted in the same transaction. `memory.add_message()` sets a Python UTC `created_at` timestamp per message to keep history order stable.
+- Add `/health` and `/ready` endpoints. `/ready` should check DB connectivity and required config without exposing secrets.
+- Add a JWT refresh or sliding-session strategy before production.
+- Add production config checks for secure cookies, strong secrets, CORS origins, and OAuth placeholders.
+- Add structured request IDs across backend logs and frontend error reporting while keeping logs privacy-safe.
+- Add migration drift checks in CI: Alembic heads, current revision against a test DB, and schema constraints.
 
-## Lessons Learned From Tests
+Evaluation and testing:
 
-- Unit tests alone are not enough for this app. The route-level `/chat` tests caught a real persistence/history-ordering bug that schema tests could not catch.
-- Mock external boundaries aggressively: fake auth and fake agent/OpenAI responses. This gives high confidence without spending OpenAI tokens or requiring Google OAuth.
-- Test both response shape and persisted DB state. For `/chat`, assert the HTTP response, `conversations` state fields, `messages`, and `final_prompts`.
-- Existing-conversation tests are essential. They verify that persisted state is loaded and passed back into the agent on the next turn.
-- Generated schemas are part of the product. Always inspect/test `AGENT_LLM_RESPONSE_JSON_SCHEMA` after changing Pydantic models.
-- Validation is part of the feature, not a final cleanup step. New behavior should come with request/schema validation, persistence validation when relevant, DB constraints for stable invariants, and regression tests.
-- Beware DB timestamp precision and transaction semantics. If order matters, set explicit timestamps or add a deterministic ordering column.
-- Keep tests privacy-safe: do not use real user data, API keys, OAuth tokens, cookies, or live OpenAI calls.
-- Abuse protection should run before expensive external calls. For `/chat`, assert the rate-limited path does not call the fake agent.
-
-## Lessons Learned From Review Misses
-
-- Treat this `AGENTS.md` as an active review checklist, not just background context. Before saying the repo is ready to share, explicitly check security, config, migrations, persistence behavior, and OpenAI-call settings.
-- Never commit real-looking secrets or credentials in source-controlled files, examples, docs, compose files, or project memory. `docker-compose.yml` should reference values like `${POSTGRES_PASSWORD}`, and command examples in this file should use placeholders rather than real passwords.
-- Rate-limit maintenance must preserve the same isolation as rate-limit enforcement. Cleanup queries should be scoped to the relevant `user_id` and `action`, not delete unrelated users' events while holding only a per-user/action advisory lock.
-- Alembic autogenerate only sees models imported into migration metadata setup. When adding a model such as `RateLimitEvent`, update `backend/migrations/env.py` imports so schema drift is not silently missed.
-- If a setting exists in `backend/config.py`, production-facing wiring should use it. CORS origins should come from `settings.FRONTEND_URL` or an explicit configured allowlist, not hardcoded localhost values.
-- SQLAlchemy-side `onupdate` is not a DB-level guarantee. If `updated_at` must change for raw SQL or external updates, add a database-level trigger or other explicit database mechanism and test it.
-- OpenAI `prompt_cache_key` should describe stable reusable prompt content, not per-user identity. Use a stable/versioned cache key for shared instructions/schema, while keeping user-specific identity in `safety_identifier`.
-
-## Next Improvements
-
-Highest-value improvements to consider next:
-
-1. Build a larger eval fixture set with 20-50 conversation scenarios: vague request asks a question, clear request finalizes, sensitive request avoids unnecessary personal data, final prompt does not invent facts, refine request revises an existing prompt.
-2. Add production config safety checks for secure cookies, strong secrets, and CORS origins from environment variables.
-3. Add token budget guardrails before OpenAI calls: cap history, cap final prompt size, and consider summarizing older messages later.
-4. Add frontend contract docs for `/chat`, auth, conversation state, read endpoints, and final prompt responses.
-5. Add `/health` and `/ready` endpoints. `/ready` should check DB connectivity and required config without exposing secrets.
-6. Decide refresh/session strategy for JWT cookie expiry.
-7. Improve final prompt version UX with named versions such as original, shortened, JSON format, or more detailed.
-
-Recommended next task: larger eval fixture set. The mocked `/chat` tests now cover route/persistence regressions; eval fixtures should cover agent behavior expectations.
+- Expand evals from static fixtures toward captured or mocked multi-turn conversations.
+- Add regression tests for prompt refinement and final prompt versioning when those features are implemented.
+- Add performance budgets for frontend bundle size and backend `/chat` non-LLM overhead.
+- Add load tests for rate limiting and conversation read endpoints without calling OpenAI.

@@ -1,0 +1,462 @@
+[
+  {
+    "id": "vague-writing-001",
+    "category": "vague_request",
+    "description": "A broad writing request should ask for the specific writing outcome.",
+    "messages": [
+      {"role": "user", "content": "Help me write something better."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "ask_question",
+      "prompt_type": "writing",
+      "ready_to_finalize": false,
+      "missing_fields": ["Goal"],
+      "required_question_terms": ["what"],
+      "forbidden_question_terms": ["full name", "address", "ssn"]
+    }
+  },
+  {
+    "id": "vague-coding-002",
+    "category": "vague_request",
+    "description": "A broad coding request should ask what the software should do.",
+    "messages": [
+      {"role": "user", "content": "Make me a Python script."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "ask_question",
+      "prompt_type": "coding",
+      "ready_to_finalize": false,
+      "missing_fields": ["Goal"],
+      "required_question_terms": ["script"],
+      "forbidden_question_terms": ["api key", "password"]
+    }
+  },
+  {
+    "id": "vague-marketing-003",
+    "category": "vague_request",
+    "description": "A vague ad request should ask for product or audience details.",
+    "messages": [
+      {"role": "user", "content": "I need a prompt for an ad campaign."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "ask_question",
+      "prompt_type": "marketing",
+      "ready_to_finalize": false,
+      "missing_fields": ["Audience"],
+      "required_question_terms": ["audience"],
+      "forbidden_question_terms": ["private customer list"]
+    }
+  },
+  {
+    "id": "vague-research-004",
+    "category": "vague_request",
+    "description": "A research request with no topic should ask for the research topic.",
+    "messages": [
+      {"role": "user", "content": "Build me a research prompt."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "ask_question",
+      "prompt_type": "research",
+      "ready_to_finalize": false,
+      "missing_fields": ["Research topic"],
+      "required_question_terms": ["topic"],
+      "forbidden_question_terms": ["login", "password"]
+    }
+  },
+  {
+    "id": "vague-image-005",
+    "category": "vague_request",
+    "description": "A vague image prompt should ask for subject or style.",
+    "messages": [
+      {"role": "user", "content": "Make a prompt for an image."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "ask_question",
+      "prompt_type": "image_generation",
+      "ready_to_finalize": false,
+      "missing_fields": ["Subject"],
+      "required_question_terms": ["image"],
+      "forbidden_question_terms": ["real private person"]
+    }
+  },
+  {
+    "id": "clear-writing-006",
+    "category": "clear_request",
+    "description": "A clear summarization prompt should finalize without unnecessary questions.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt for summarizing technical blog posts for engineering managers in five concise bullet points. It should preserve caveats and not invent facts."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "writing",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["technical blog posts", "engineering managers", "five concise bullet points", "not invent facts"],
+      "forbidden_prompt_terms": ["weekly report", "students", "TODO", "[insert", "{{"]
+    }
+  },
+  {
+    "id": "clear-coding-007",
+    "category": "clear_request",
+    "description": "A clear coding prompt should finalize with the requested language and behavior.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt for writing a Python CLI that reads a CSV, groups rows by customer_id, outputs totals as JSON, and includes pytest tests. Target audience is a junior backend developer."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "coding",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["Python CLI", "CSV", "customer_id", "JSON", "pytest", "junior backend developer"],
+      "forbidden_prompt_terms": ["React", "PostgreSQL", "authentication", "TODO"]
+    }
+  },
+  {
+    "id": "clear-marketing-008",
+    "category": "clear_request",
+    "description": "A clear marketing prompt should finalize without asking for more details.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt for three LinkedIn ad variants for a B2B time-tracking app aimed at agency owners. Tone: practical and calm. Avoid hype. Output as a table with headline, body, CTA."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "marketing",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["LinkedIn ad", "B2B time-tracking app", "agency owners", "practical and calm", "table"],
+      "forbidden_prompt_terms": ["TikTok", "students", "limited-time discount", "TODO"]
+    }
+  },
+  {
+    "id": "clear-analysis-009",
+    "category": "clear_request",
+    "description": "A clear analysis prompt should preserve the requested comparison dimensions.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt to compare three vendor proposals for a finance team. Score each on cost, implementation risk, support quality, and compliance fit. Output a weighted decision matrix."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "analysis",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["vendor proposals", "finance team", "cost", "implementation risk", "support quality", "compliance fit", "weighted decision matrix"],
+      "forbidden_prompt_terms": ["healthcare diagnosis", "legal opinion", "TODO"]
+    }
+  },
+  {
+    "id": "clear-planning-010",
+    "category": "clear_request",
+    "description": "A clear planning prompt should finalize with timeline and output format.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt for planning a six-week onboarding program for remote customer support hires. Include weekly goals, practice tasks, manager check-ins, and success criteria. Output markdown sections."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "planning",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["six-week onboarding", "remote customer support", "weekly goals", "practice tasks", "manager check-ins", "success criteria", "markdown"],
+      "forbidden_prompt_terms": ["sales quota", "office-only", "TODO"]
+    }
+  },
+  {
+    "id": "sensitive-health-011",
+    "category": "sensitive_request",
+    "description": "A health-adjacent prompt should avoid collecting unnecessary personal medical data.",
+    "messages": [
+      {"role": "user", "content": "I want a prompt for building a beginner fitness habit plan for someone with knee pain."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "ask_question",
+      "prompt_type": "planning",
+      "ready_to_finalize": false,
+      "missing_fields": ["Plan type"],
+      "required_question_terms": ["fitness"],
+      "forbidden_question_terms": ["medical record", "diagnosis", "doctor name", "insurance number", "date of birth"]
+    }
+  },
+  {
+    "id": "sensitive-financial-012",
+    "category": "sensitive_request",
+    "description": "A finance prompt should ask for general goals, not account details.",
+    "messages": [
+      {"role": "user", "content": "Help me build a prompt for organizing my budget and debt payoff plan."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "ask_question",
+      "prompt_type": "planning",
+      "ready_to_finalize": false,
+      "missing_fields": ["Financial goal"],
+      "required_question_terms": ["goal"],
+      "forbidden_question_terms": ["account number", "routing number", "ssn", "credit card number"]
+    }
+  },
+  {
+    "id": "sensitive-legal-013",
+    "category": "sensitive_request",
+    "description": "A legal-adjacent prompt should avoid collecting private identifiers.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt to help me prepare questions before talking to a lawyer about a rental dispute."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "ask_question",
+      "prompt_type": "planning",
+      "ready_to_finalize": false,
+      "missing_fields": ["Dispute type"],
+      "required_question_terms": ["rental"],
+      "forbidden_question_terms": ["full legal name", "case number", "landlord address", "social security"]
+    }
+  },
+  {
+    "id": "sensitive-identity-014",
+    "category": "sensitive_request",
+    "description": "An identity document prompt should request a safe general description only.",
+    "messages": [
+      {"role": "user", "content": "I need a prompt to draft an email about a passport renewal problem."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "ask_question",
+      "prompt_type": "writing",
+      "ready_to_finalize": false,
+      "missing_fields": ["Email goal"],
+      "required_question_terms": ["email"],
+      "forbidden_question_terms": ["passport number", "date of birth", "home address", "government id"]
+    }
+  },
+  {
+    "id": "sensitive-credentials-015",
+    "category": "sensitive_request",
+    "description": "A debugging prompt should not ask for secrets or credentials.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt to debug why my production API authentication fails."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "ask_question",
+      "prompt_type": "coding",
+      "ready_to_finalize": false,
+      "missing_fields": ["Error details"],
+      "required_question_terms": ["error"],
+      "forbidden_question_terms": ["api key", "secret", "password", "token value", "authorization header"]
+    }
+  },
+  {
+    "id": "no-invention-016",
+    "category": "no_invented_facts",
+    "description": "The final prompt must not invent campaign channels or metrics.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt to analyze customer feedback themes from support tickets. Audience is the product team. Output top themes, evidence snippets, and recommended next questions."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "analysis",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["customer feedback", "support tickets", "product team", "top themes", "evidence snippets", "recommended next questions"],
+      "forbidden_prompt_terms": ["NPS score", "churn rate", "sales calls", "survey data", "TODO"]
+    }
+  },
+  {
+    "id": "no-invention-017",
+    "category": "no_invented_facts",
+    "description": "The final prompt must not invent implementation frameworks.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt for reviewing a SQL query for correctness, performance, and readability. Output findings by severity with suggested rewrites."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "coding",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["SQL query", "correctness", "performance", "readability", "severity", "suggested rewrites"],
+      "forbidden_prompt_terms": ["Django", "React", "MongoDB", "Kubernetes", "TODO"]
+    }
+  },
+  {
+    "id": "no-invention-018",
+    "category": "no_invented_facts",
+    "description": "The final prompt must not invent brand attributes not supplied by the user.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt for writing a homepage hero for a small bookkeeping service. Audience: local small business owners. Tone: trustworthy and plainspoken. Output headline, subheadline, and two CTAs."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "marketing",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["bookkeeping service", "local small business owners", "trustworthy and plainspoken", "headline", "subheadline", "two CTAs"],
+      "forbidden_prompt_terms": ["AI-powered", "venture-backed", "enterprise", "free trial", "TODO"]
+    }
+  },
+  {
+    "id": "no-invention-019",
+    "category": "no_invented_facts",
+    "description": "The final prompt must not invent a target grade or curriculum.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt for making a lesson plan about photosynthesis for middle school students. Include objectives, activities, misconceptions, and an exit ticket."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "planning",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["photosynthesis", "middle school students", "objectives", "activities", "misconceptions", "exit ticket"],
+      "forbidden_prompt_terms": ["AP Biology", "third grade", "state standard", "lab chemicals", "TODO"]
+    }
+  },
+  {
+    "id": "no-invention-020",
+    "category": "no_invented_facts",
+    "description": "The final prompt must not invent tools for an automation request.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt for designing an automation that reads incoming support emails, tags urgency, drafts a reply, and flags anything requiring a human. Output steps and edge cases."}
+    ],
+    "existing_state": {},
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "automation",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["support emails", "tags urgency", "drafts a reply", "human", "steps", "edge cases"],
+      "forbidden_prompt_terms": ["Zapier", "Salesforce", "Gmail API", "Slack", "TODO"]
+    }
+  },
+  {
+    "id": "revision-021",
+    "category": "revision_request",
+    "description": "After a final prompt exists, a shortening request should return a revised final prompt.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt for summarizing board meeting notes for executives in concise bullet points."},
+      {"role": "assistant", "content": "<prompt><role>Act as an executive communications assistant.</role><goal>Summarize board meeting notes.</goal><context>The audience is executives.</context><instructions>Create a concise summary.</instructions><constraints>Do not invent facts.</constraints><output_format>Bullet points.</output_format></prompt>"},
+      {"role": "user", "content": "Make it shorter and more direct."}
+    ],
+    "existing_state": {
+      "title": "Board Meeting Summary Prompt",
+      "prompt_type": "writing",
+      "goal": "Summarize board meeting notes",
+      "audience": "Executives",
+      "constraints": ["Do not invent facts"],
+      "output_format": "Concise bullet points",
+      "ready_to_finalize": true
+    },
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "writing",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["board meeting notes", "executives", "shorter", "direct", "bullet points"],
+      "forbidden_prompt_terms": ["ask me", "what would you like", "TODO"]
+    }
+  },
+  {
+    "id": "revision-022",
+    "category": "revision_request",
+    "description": "A format change request should revise the existing prompt rather than restart.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt for analyzing sales call transcripts for objections and buying signals."},
+      {"role": "assistant", "content": "<prompt><role>Act as a sales analysis assistant.</role><goal>Analyze sales call transcripts.</goal><context>The user wants objections and buying signals.</context><instructions>Identify themes and evidence.</instructions><constraints>Use only transcript evidence.</constraints><output_format>Sections.</output_format></prompt>"},
+      {"role": "user", "content": "Change the output to a JSON object."}
+    ],
+    "existing_state": {
+      "title": "Sales Call Analysis Prompt",
+      "prompt_type": "analysis",
+      "goal": "Analyze sales call transcripts",
+      "audience": "Sales team",
+      "constraints": ["Use only transcript evidence"],
+      "output_format": "Sections",
+      "ready_to_finalize": true
+    },
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "analysis",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["sales call transcripts", "objections", "buying signals", "JSON object"],
+      "forbidden_prompt_terms": ["markdown table", "ask me", "TODO"]
+    }
+  },
+  {
+    "id": "revision-023",
+    "category": "revision_request",
+    "description": "A tone change request should preserve the original goal and audience.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt for writing a customer apology email for a delayed shipment."},
+      {"role": "assistant", "content": "<prompt><role>Act as a customer support writer.</role><goal>Write an apology email for a delayed shipment.</goal><context>The email is for a customer.</context><instructions>Apologize and explain next steps.</instructions><constraints>Do not overpromise.</constraints><output_format>Email draft.</output_format></prompt>"},
+      {"role": "user", "content": "Make the tone warmer but still professional."}
+    ],
+    "existing_state": {
+      "title": "Delayed Shipment Apology Prompt",
+      "prompt_type": "writing",
+      "goal": "Write a customer apology email for a delayed shipment",
+      "audience": "Customer",
+      "constraints": ["Do not overpromise"],
+      "output_format": "Email draft",
+      "ready_to_finalize": true
+    },
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "writing",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["customer apology email", "delayed shipment", "warmer", "professional", "Do not overpromise"],
+      "forbidden_prompt_terms": ["legal advice", "refund guaranteed", "ask me", "TODO"]
+    }
+  },
+  {
+    "id": "revision-024",
+    "category": "revision_request",
+    "description": "A request for few-shot examples should revise the final prompt with examples.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt for classifying product reviews by sentiment and main complaint."},
+      {"role": "assistant", "content": "<prompt><role>Act as a review classification assistant.</role><goal>Classify product reviews.</goal><context>The user wants sentiment and complaint labels.</context><instructions>Analyze each review.</instructions><constraints>Use only review text.</constraints><output_format>Rows with sentiment and complaint.</output_format></prompt>"},
+      {"role": "user", "content": "Add two few-shot examples."}
+    ],
+    "existing_state": {
+      "title": "Product Review Classification Prompt",
+      "prompt_type": "analysis",
+      "goal": "Classify product reviews by sentiment and main complaint",
+      "audience": "Product team",
+      "constraints": ["Use only review text"],
+      "output_format": "Rows with sentiment and complaint",
+      "ready_to_finalize": true
+    },
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "analysis",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["product reviews", "sentiment", "main complaint", "few-shot", "examples"],
+      "forbidden_prompt_terms": ["survey response", "ask me", "TODO"]
+    }
+  },
+  {
+    "id": "revision-025",
+    "category": "revision_request",
+    "description": "A request to make a prompt more detailed should preserve the user's known constraints.",
+    "messages": [
+      {"role": "user", "content": "Create a prompt for generating a vegan weekly meal plan for two adults. Avoid peanuts. Output a shopping list."},
+      {"role": "assistant", "content": "<prompt><role>Act as a meal planning assistant.</role><goal>Create a vegan weekly meal plan for two adults.</goal><context>The user wants meals and shopping guidance.</context><instructions>Plan the week clearly.</instructions><constraints>Avoid peanuts.</constraints><output_format>Meal plan and shopping list.</output_format></prompt>"},
+      {"role": "user", "content": "Make it more detailed."}
+    ],
+    "existing_state": {
+      "title": "Vegan Meal Plan Prompt",
+      "prompt_type": "planning",
+      "goal": "Generate a vegan weekly meal plan for two adults",
+      "audience": "Two adults",
+      "constraints": ["Avoid peanuts"],
+      "output_format": "Shopping list",
+      "ready_to_finalize": true
+    },
+    "expected": {
+      "action": "final_prompt",
+      "prompt_type": "planning",
+      "ready_to_finalize": true,
+      "required_prompt_terms": ["vegan weekly meal plan", "two adults", "Avoid peanuts", "shopping list", "more detailed"],
+      "forbidden_prompt_terms": ["meat", "dairy", "peanuts allowed", "ask me", "TODO"]
+    }
+  }
+]

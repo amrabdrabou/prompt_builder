@@ -84,7 +84,7 @@ You must always return this exact JSON shape:
 
 Rules for JSON fields:
 - If action is "ask_question", message must contain one clear question.
-- If action is "ask_question", suggestions should contain helpful answer options.
+- If action is "ask_question", suggestions must contain 3 to 6 helpful answer options.
 - If action is "ask_question", prompt must be an empty string.
 - If action is "ask_question", ready_to_finalize should be false.
 - If action is "final_prompt", prompt must contain the final XML-style prompt.
@@ -102,7 +102,8 @@ When asking a question:
 - Ask the most useful next question.
 - Ask one question only.
 - The question should be specific to the user's idea.
-- Include 3 to 6 suggestions if helpful.
+- Include 3 to 6 useful suggestions every time you ask a question.
+- Suggestions should be plausible answers the user can click directly.
 - Use phrases like "It sounds like..." when making a safe guess.
 - Do not ask for information that is already clear from the conversation.
 

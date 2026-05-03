@@ -1,3 +1,4 @@
+import logging
 import warnings
 
 from authlib.deprecate import AuthlibDeprecationWarning
@@ -23,30 +24,65 @@ from schemas import UserResponse
 from security import create_access_token, decode_access_token, get_token_from_request
 
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 oauth = OAuth()
 
 
+def is_placeholder_config(value: str | None) -> bool:
+    if value is None:
+        return False
+
+    normalized = value.strip().lower()
+
+    return (
+        normalized.startswith("your_")
+        or normalized.startswith("change_this")
+        or normalized in {"placeholder", "changeme", "replace_me"}
+    )
+
+
 def validate_google_oauth_config() -> None:
     missing_values = []
+    placeholder_values = []
 
     if not settings.GOOGLE_CLIENT_ID:
         missing_values.append("GOOGLE_CLIENT_ID")
+    elif is_placeholder_config(settings.GOOGLE_CLIENT_ID):
+        placeholder_values.append("GOOGLE_CLIENT_ID")
 
     if not settings.GOOGLE_CLIENT_SECRET:
         missing_values.append("GOOGLE_CLIENT_SECRET")
+    elif is_placeholder_config(settings.GOOGLE_CLIENT_SECRET):
+        placeholder_values.append("GOOGLE_CLIENT_SECRET")
 
     if not settings.SESSION_SECRET_KEY:
         missing_values.append("SESSION_SECRET_KEY")
+    elif is_placeholder_config(settings.SESSION_SECRET_KEY):
+        placeholder_values.append("SESSION_SECRET_KEY")
 
     if not settings.JWT_SECRET_KEY:
         missing_values.append("JWT_SECRET_KEY")
+    elif is_placeholder_config(settings.JWT_SECRET_KEY):
+        placeholder_values.append("JWT_SECRET_KEY")
 
     if missing_values:
+        logger.error("Auth configuration is incomplete: missing %s", ", ".join(missing_values))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Missing auth configuration: {', '.join(missing_values)}",
+            detail="Auth service is unavailable. Contact the administrator.",
+        )
+
+    if placeholder_values:
+        logger.error(
+            "Auth configuration contains placeholder values: %s",
+            ", ".join(placeholder_values),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Auth service is unavailable. Contact the administrator.",
         )
 
 
