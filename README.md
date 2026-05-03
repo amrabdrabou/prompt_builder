@@ -1,6 +1,23 @@
 # Prompt Builder
 
-Prompt Builder is a web app that helps you create better prompts. You describe what you want, the agent asks clarifying questions, tracks the prompt state, and returns a reviewed XML prompt ready to use.
+Prompt Builder is an agent-powered workspace for turning rough ideas into precise, reusable prompts.
+
+Instead of trying to answer your original request directly, the agent behaves like a careful prompt architect: it listens, asks focused clarifying questions, tracks what is known, notices what is still missing, and finally returns a reviewed XML prompt that is ready to use with another AI system.
+
+It is built for the messy middle of prompt creation, where you know what you want but not yet how to say it cleanly.
+
+## How The Agent Works
+
+The agent follows a structured conversation loop:
+
+1. Understand the rough prompt.
+2. Extract the goal, audience, constraints, and output format.
+3. Maintain structured conversation state.
+4. Ask the next best question when important details are missing.
+5. Generate a final XML prompt only when the request is clear enough.
+6. Review the final prompt for clarity, valid XML, missing details, and quality.
+
+The final result is not just a chat response. It is a validated prompt artifact with a `<prompt>` root and required sections for role, goal, context, instructions, constraints, and output format.
 
 ## Screenshots
 
@@ -130,6 +147,8 @@ docker compose --profile frontend up --build
 
 The backend automatically runs database migrations on every startup — no manual migration step is needed.
 
+The frontend container is attached to the `frontend` Docker Compose profile. That means it starts only when you include `--profile frontend`.
+
 Once running, open:
 
 | Service  | URL                       |
@@ -143,7 +162,26 @@ Once running, open:
 docker compose up --build
 ```
 
-Use this when running the frontend locally with `npm run dev` or deploying it to Vercel.
+This starts the default Compose services only:
+
+- PostgreSQL
+- FastAPI backend
+
+Use this when running the frontend locally with `npm run dev` or deploying it separately, for example to Vercel. This is the fastest local development path when you want Vite hot reload outside Docker.
+
+### Start the frontend locally without the frontend container
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Then open:
+
+```text
+http://localhost:5173
+```
 
 ### Stop
 
